@@ -1,0 +1,489 @@
+Research Agent — Docker, CI/CD & Railway Deployment Documentation
+
+1. Project Overview
+
+This project is an AI-powered Research Agent.
+
+The user asks a research question, and the application:
+
+1. Searches the web using Tavily.
+
+
+2. Collects relevant web sources.
+
+
+3. Sends the search results to an LLM using Groq.
+
+
+4. Generates a summarized answer.
+
+
+5. Adds inline citations.
+
+
+6. Displays the original sources.
+
+
+7. Maintains short-term conversation history during the current session.
+
+
+
+The application has two interfaces:
+
+Streamlit Web UI
+
+Command-line interface
+
+
+
+---
+
+2. High-Level Application Architecture
+
+The application currently contains four main Python files.
+
+Research Agent
+│
+├── app.py
+│     │
+│     ├── Streamlit UI
+│     ├── User input
+│     ├── Session history
+│     └── Displays answer and sources
+│
+├── search.py
+│     │
+│     └── Tavily Web Search
+│
+├── summarize.py
+│     │
+│     └── Groq LLM
+│
+└── agent.py
+      │
+      └── CLI Agent
+
+The application flow is:
+
+User
+  │
+  │ Ask Question
+  ▼
+Streamlit UI
+  │
+  ▼
+search.py
+  │
+  │ Tavily API
+  ▼
+Web Search Results
+  │
+  ▼
+summarize.py
+  │
+  │ Groq LLM
+  ▼
+AI Generated Answer
+  │
+  ├── Inline Citations
+  │
+  └── Sources
+  │
+  ▼
+User
+
+
+---
+
+3. Application Files
+
+The project contains:
+
+research-agent/
+│
+├── app.py
+├── agent.py
+├── search.py
+├── summarize.py
+│
+├── requirements.txt
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+└── .github/
+    └── workflows/
+        └── ci.yml
+
+The .env file exists locally but is not committed to GitHub.
+
+.env
+
+
+---
+
+4. app.py
+
+app.py is the main Streamlit application.
+
+Its responsibilities are:
+
+Configure Streamlit.
+
+Display the Research Agent UI.
+
+Accept user questions.
+
+Call the web search function.
+
+Call the summarization function.
+
+Display answers.
+
+Display sources.
+
+Maintain session-only conversation history.
+
+
+The application uses:
+
+import streamlit as st
+
+The user enters a question through:
+
+query = st.chat_input("Ask a research question...")
+
+The application searches the web:
+
+results = web_search(query, max_results=5)
+
+Then sends the search results to the LLM:
+
+answer = summarize_results(
+    query,
+    results,
+    history_context
+)
+
+The answer and sources are displayed to the user.
+
+
+---
+
+5. search.py
+
+search.py is responsible for web searching.
+
+It uses:
+
+Tavily
+
+The API key is loaded from an environment variable:
+
+TAVILY_API_KEY
+
+The main function is:
+
+web_search(query, max_results=5)
+
+The function returns results in this structure:
+
+[
+    {
+        "title": "...",
+        "url": "...",
+        "content": "..."
+    }
+]
+
+The application uses Tavily's advanced search mode:
+
+search_depth="advanced"
+
+The flow is:
+
+User Question
+      │
+      ▼
+web_search()
+      │
+      ▼
+Tavily API
+      │
+      ▼
+Search Results
+      │
+      ├── Title
+      ├── URL
+      └── Content
+
+
+---
+
+6. summarize.py
+
+summarize.py is responsible for generating the final answer.
+
+It uses:
+
+Groq
+
+The API key is loaded from:
+
+GROQ_API_KEY
+
+The model currently used is:
+
+llama-3.3-70b-versatile
+
+The function is:
+
+summarize_results(
+    query,
+    results,
+    history_context
+)
+
+The search results are converted into a context for the LLM.
+
+The prompt instructs the model to:
+
+Use only provided sources.
+
+Cite sources using [1], [2], etc.
+
+Mention conflicts between sources.
+
+State when information is insufficient.
+
+Use previous conversation context when relevant.
+
+
+The flow is:
+
+Search Results
+      │
+      ▼
+Build Context
+      │
+      ▼
+Build Prompt
+      │
+      ▼
+Groq LLM
+      │
+      ▼
+AI Answer
+      │
+      ├── Inline Citations
+      │
+      └── Source References
+
+
+---
+
+7. agent.py
+
+agent.py provides a command-line version of the Research Agent.
+
+It uses:
+
+from search import web_search
+from summarize import summarize_results
+
+The main flow is:
+
+Terminal
+   │
+   ▼
+User enters question
+   │
+   ▼
+web_search()
+   │
+   ▼
+Tavily
+   │
+   ▼
+Search Results
+   │
+   ▼
+summarize_results()
+   │
+   ▼
+Groq
+   │
+   ▼
+Answer
+   │
+   ▼
+Terminal
+
+It also maintains an in-memory history list.
+
+The memory is not persisted to a database.
+
+When the terminal process ends:
+
+History = Lost
+
+
+---
+
+8. Environment Variables
+
+The application requires two API keys.
+
+TAVILY_API_KEY
+GROQ_API_KEY
+
+Locally, these are stored in:
+
+.env
+
+Example:
+
+TAVILY_API_KEY=your_tavily_api_key
+GROQ_API_KEY=your_groq_api_key
+
+The .env file must never be committed to GitHub.
+
+The .gitignore contains:
+
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+The .dockerignore also excludes:
+
+.env
+.git
+.gitignore
+__pycache__
+*.pyc
+.venv
+venv
+
+This prevents secrets from accidentally being included in the Docker image.
+
+
+---
+
+9. Python Dependencies
+
+The project has a requirements.txt file.
+
+The dependencies include the required libraries for:
+
+Streamlit
+
+Groq
+
+Tavily
+
+Python dotenv
+
+HTTP/networking
+
+Pydantic and related dependencies
+
+
+The dependencies are installed using:
+
+pip install -r requirements.txt
+
+The same requirements.txt is used during CI and Docker image creation.
+
+
+---
+
+10. Dockerization
+
+The application was containerized using Docker.
+
+The purpose of Docker is to package:
+
+Application Code
+       +
+Python Runtime
+       +
+Python Dependencies
+       +
+Configuration
+
+into a Docker image.
+
+The architecture becomes:
+
+Dockerfile
+    │
+    ▼
+Docker Build
+    │
+    ▼
+Docker Image
+    │
+    ▼
+Docker Container
+    │
+    ▼
+Streamlit Application
+
+The Docker container runs Streamlit.
+
+The application listens on:
+
+8501
+
+For Railway deployment, the container was configured to support Railway's dynamic PORT environment variable.
+
+The Docker command conceptually becomes:
+
+Streamlit
+   │
+   ├── Address: 0.0.0.0
+   │
+   └── Port: ${PORT:-8501}
+
+This means:
+
+Locally, it can use port 8501.
+
+Railway can provide its own PORT.
+
+
+
+---
+
+11. Local Docker Workflow
+
+The application can be built locally using:
+
+docker build -t research-agent .
+
+Then run:
+
+docker run -p 8501:8501 research-agent
+
+The application can then be opened at:
+
+http://localhost:8501
+
+The local architecture is:
+
+Browser
+   │
+   ▼
+localhost:8501
+   │
+   ▼
+Docker Container
+   │
+   ▼
+Streamlit
+   │
+   ├── Tavily
+   │
+   └── Groq

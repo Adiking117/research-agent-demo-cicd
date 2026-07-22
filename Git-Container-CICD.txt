@@ -1,0 +1,1279 @@
+Research Agent — Containerization, CI/CD & Railway Deployment Documentation
+
+1. Overview
+
+This document explains how to containerize an existing Python application using Docker, create a CI pipeline using GitHub Actions, build and publish Docker images to GitHub Container Registry (GHCR), and deploy the application on Railway.
+
+The overall deployment architecture is:
+
+Developer
+    │
+    │ git push
+    ▼
+GitHub Repository
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Install Dependencies
+    ├── Validate Python Code
+    ├── Build Docker Image
+    └── Push Docker Image
+            │
+            ▼
+          GHCR
+            │
+            ▼
+         Railway
+            │
+            ├── Environment Variables
+            ├── Docker Container
+            └── Public URL
+            │
+            ▼
+       Live Application
+
+The technologies used are:
+
+Git — Version control
+
+GitHub — Source code repository
+
+Docker — Application containerization
+
+GitHub Actions — CI/CD automation
+
+GitHub Container Registry (GHCR) — Docker image registry
+
+Railway — Cloud deployment and hosting
+
+
+
+---
+
+2. Project Structure
+
+The project contains the application code along with Docker and CI/CD configuration.
+
+A typical structure is:
+
+research-agent/
+│
+├── app.py
+├── agent.py
+├── search.py
+├── summarize.py
+│
+├── requirements.txt
+│
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+└── .github/
+    └── workflows/
+        └── ci.yml
+
+The application files themselves are outside the scope of this document.
+
+The important deployment-related files are:
+
+requirements.txt
+Dockerfile
+.dockerignore
+.gitignore
+.github/workflows/ci.yml
+
+
+---
+
+3. Prerequisites
+
+Before starting, install the following:
+
+Git
+
+Used for source code management.
+
+Verify installation:
+
+git --version
+
+Docker
+
+Used to build and run containers.
+
+Verify installation:
+
+docker --version
+
+GitHub Account
+
+Required for:
+
+Hosting source code
+
+Running GitHub Actions
+
+Publishing images to GHCR
+
+
+Railway Account
+
+Required for deploying the application.
+
+
+---
+
+4. Git Repository Setup
+
+Initialize Git inside the project:
+
+git init
+
+Add the remote GitHub repository:
+
+git remote add origin <YOUR_GITHUB_REPOSITORY_URL>
+
+Add all project files:
+
+git add .
+
+Create the first commit:
+
+git commit -m "Initial project setup"
+
+Push to GitHub:
+
+git branch -M main
+git push -u origin main
+
+The source code is now available in GitHub.
+
+
+---
+
+5. Environment Variables and Secrets
+
+The application uses API keys or other sensitive configuration.
+
+These values should never be hardcoded in source code.
+
+For local development, a .env file can be used:
+
+.env
+
+Example:
+
+TAVILY_API_KEY=your_api_key
+GROQ_API_KEY=your_api_key
+
+The .env file must not be pushed to GitHub.
+
+Add it to .gitignore:
+
+.env
+
+Other files that should normally be ignored:
+
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+This prevents secrets and local Python environments from being committed.
+
+
+---
+
+6. Docker Containerization
+
+6.1 What is Docker?
+
+Docker packages an application and its dependencies into a portable container.
+
+Without Docker, the application depends on the environment where it is executed:
+
+Operating System
+       +
+Python Version
+       +
+Installed Packages
+       +
+Application Code
+
+With Docker, the environment is packaged consistently:
+
+Docker Image
+│
+├── Base Python Image
+├── Python Dependencies
+└── Application Code
+
+The Docker image can then be executed as a container:
+
+Docker Image
+      │
+      ▼
+Docker Container
+      │
+      ▼
+Running Application
+
+
+---
+
+7. Creating the Dockerfile
+
+Create a file named:
+
+Dockerfile
+
+A suitable Dockerfile for a Streamlit-based Python application is:
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8501
+
+CMD ["sh", "-c", "streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+
+
+---
+
+8. Understanding the Dockerfile
+
+Base Image
+
+FROM python:3.12-slim
+
+This uses a lightweight Python 3.12 image.
+
+
+---
+
+Working Directory
+
+WORKDIR /app
+
+All application commands will execute inside:
+
+/app
+
+
+---
+
+Copy Requirements
+
+COPY requirements.txt .
+
+The dependency file is copied into the container.
+
+
+---
+
+Install Dependencies
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+Docker installs all Python dependencies required by the application.
+
+
+---
+
+Copy Application Code
+
+COPY . .
+
+The application source code is copied into the container.
+
+
+---
+
+Expose Port
+
+EXPOSE 8501
+
+Streamlit commonly runs on port 8501.
+
+
+---
+
+Start Application
+
+CMD ["sh", "-c", "streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+
+The application listens on:
+
+0.0.0.0
+
+This is important because the application needs to be accessible from outside the container.
+
+The port logic is:
+
+If PORT is provided:
+    Use PORT
+
+Otherwise:
+    Use 8501
+
+This makes the container suitable for both local Docker usage and Railway deployment.
+
+
+---
+
+9. Creating .dockerignore
+
+Create:
+
+.dockerignore
+
+Recommended contents:
+
+.env
+.git
+.gitignore
+.github
+__pycache__
+*.pyc
+.venv
+venv
+
+The purpose is to prevent unnecessary or sensitive files from being copied into the Docker build context.
+
+In particular:
+
+.env
+
+should never be included in the Docker image.
+
+
+---
+
+10. Build Docker Image Locally
+
+From the project root:
+
+docker build -t research-agent .
+
+Explanation:
+
+docker build
+
+Builds a Docker image.
+
+-t research-agent
+
+Gives the image a name.
+
+.
+
+Uses the current directory as the Docker build context.
+
+After building, check images:
+
+docker images
+
+You should see:
+
+research-agent
+
+
+---
+
+11. Run Docker Container Locally
+
+Run:
+
+docker run --env-file .env -p 8501:8501 research-agent
+
+The mapping is:
+
+Host Port 8501
+       │
+       ▼
+Container Port 8501
+
+Open:
+
+http://localhost:8501
+
+The architecture is:
+
+Browser
+   │
+   │ localhost:8501
+   ▼
+Docker Container
+   │
+   ▼
+Python Application
+
+This confirms that the application works inside Docker.
+
+
+---
+
+12. GitHub Actions CI/CD
+
+After Dockerization, GitHub Actions is used to automate the build process.
+
+The workflow file is:
+
+.github/workflows/ci.yml
+
+GitHub Actions can automatically run whenever code is pushed.
+
+The basic flow is:
+
+Developer
+    │
+    │ git push
+    ▼
+GitHub
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Checkout Code
+    ├── Setup Python
+    ├── Install Dependencies
+    ├── Validate Code
+    ├── Build Docker Image
+    └── Push Image to GHCR
+
+
+---
+
+13. GitHub Actions Workflow
+
+A basic workflow is:
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python Syntax
+        run: |
+          python -m py_compile app.py
+          python -m py_compile agent.py
+          python -m py_compile search.py
+          python -m py_compile summarize.py
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set Docker Image Name
+        run: |
+          echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            -t ghcr.io/${IMAGE_NAME}:latest \
+            .
+
+      - name: Push Docker Image to GHCR
+        run: |
+          docker push ghcr.io/${IMAGE_NAME}:latest
+
+
+---
+
+14. Understanding the CI Pipeline
+
+Step 1 — Trigger
+
+The workflow runs when:
+
+Push to main
+
+or:
+
+Pull Request to main
+
+occurs.
+
+
+---
+
+Step 2 — Checkout
+
+uses: actions/checkout@v4
+
+Downloads the repository code into the GitHub Actions runner.
+
+
+---
+
+Step 3 — Setup Python
+
+uses: actions/setup-python@v5
+
+Installs Python 3.12 for the CI environment.
+
+
+---
+
+Step 4 — Install Dependencies
+
+pip install -r requirements.txt
+
+This verifies that the application's dependencies can be installed successfully.
+
+
+---
+
+Step 5 — Validate Python Code
+
+The pipeline runs:
+
+python -m py_compile app.py
+
+and similar commands for the other Python files.
+
+This catches basic syntax errors.
+
+If this step fails:
+
+CI = FAILED
+
+The pipeline stops.
+
+
+---
+
+15. GitHub Container Registry
+
+GHCR stands for:
+
+GitHub Container Registry
+
+Its purpose is to store Docker images.
+
+The flow is:
+
+Dockerfile
+    │
+    ▼
+Docker Build
+    │
+    ▼
+Docker Image
+    │
+    ▼
+GHCR
+
+The image is named:
+
+ghcr.io/adiking117/research-agent-demo-cicd:latest
+
+The naming format is:
+
+ghcr.io/<github-username>/<repository-name>:<tag>
+
+For this project:
+
+ghcr.io
+    │
+    └── adiking117
+          │
+          └── research-agent-demo-cicd
+                    │
+                    └── latest
+
+
+---
+
+16. Docker Image Naming Issue
+
+During CI, the Docker build initially failed with:
+
+repository name must be lowercase
+
+The incorrect image name was:
+
+ghcr.io/Adiking117/research-agent-demo-cicd:latest
+
+The problem was the uppercase:
+
+Adiking117
+
+Docker image repository names must be lowercase.
+
+The correct name is:
+
+ghcr.io/adiking117/research-agent-demo-cicd:latest
+
+The GitHub Actions workflow was updated to convert the repository name to lowercase:
+
+IMAGE_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+This generates:
+
+ghcr.io/adiking117/research-agent-demo-cicd:latest
+
+The Docker image can then be successfully pushed to GHCR.
+
+
+---
+
+17. GHCR Authentication
+
+GitHub Actions authenticates with GHCR using:
+
+GITHUB_TOKEN
+
+The workflow requires:
+
+permissions:
+  contents: read
+  packages: write
+
+This gives the workflow permission to:
+
+Read repository
++
+Publish Docker packages
+
+The workflow logs into GHCR using:
+
+- name: Log in to GitHub Container Registry
+  uses: docker/login-action@v3
+  with:
+    registry: ghcr.io
+    username: ${{ github.actor }}
+    password: ${{ secrets.GITHUB_TOKEN }}
+
+
+---
+
+18. Complete CI Flow
+
+The complete CI pipeline is:
+
+Developer Changes Code
+        │
+        ▼
+git add .
+        │
+        ▼
+git commit
+        │
+        ▼
+git push
+        │
+        ▼
+GitHub
+        │
+        ▼
+GitHub Actions Triggered
+        │
+        ▼
+Checkout Repository
+        │
+        ▼
+Setup Python 3.12
+        │
+        ▼
+Install requirements.txt
+        │
+        ▼
+Run Python Syntax Checks
+        │
+        ▼
+Login to GHCR
+        │
+        ▼
+Build Docker Image
+        │
+        ▼
+Push Docker Image
+        │
+        ▼
+GHCR
+
+
+---
+
+19. Railway Deployment
+
+Railway is used as the cloud hosting platform.
+
+The application can be deployed directly from the GitHub repository.
+
+The basic flow is:
+
+GitHub Repository
+       │
+       ▼
+Railway
+       │
+       ▼
+Detect Dockerfile
+       │
+       ▼
+Build Docker Image
+       │
+       ▼
+Start Container
+       │
+       ▼
+Public Application
+
+
+---
+
+20. Create Railway Project
+
+Open Railway and sign in using GitHub.
+
+Create a new project.
+
+Select:
+
+Deploy from GitHub Repo
+
+Connect the GitHub account if required.
+
+Select:
+
+research-agent-demo-cicd
+
+Railway will access the repository.
+
+Since the repository contains:
+
+Dockerfile
+
+Railway can detect and build the application using Docker.
+
+
+---
+
+21. Railway Docker Deployment
+
+Railway reads the Dockerfile:
+
+Dockerfile
+    │
+    ▼
+Railway Build
+    │
+    ▼
+Docker Image
+    │
+    ▼
+Docker Container
+    │
+    ▼
+Running Application
+
+The application runs inside the Railway container.
+
+
+---
+
+22. Railway Environment Variables
+
+Production API keys should be configured through Railway's environment variables.
+
+Add:
+
+TAVILY_API_KEY
+
+and:
+
+GROQ_API_KEY
+
+The values should be the actual API keys.
+
+Do not commit these keys to GitHub.
+
+The production architecture becomes:
+
+Railway
+   │
+   ├── TAVILY_API_KEY
+   │
+   └── GROQ_API_KEY
+           │
+           ▼
+     Docker Container
+           │
+           ▼
+      Application
+
+The application reads the variables from the environment.
+
+
+---
+
+23. Railway Port Configuration
+
+Railway provides a dynamic PORT environment variable.
+
+The Dockerfile uses:
+
+--server.port=${PORT:-8501}
+
+This means:
+
+Railway
+   │
+   │ PORT = Railway assigned port
+   ▼
+Streamlit
+
+If Railway doesn't provide a port, the application defaults to:
+
+8501
+
+The application also needs to listen on:
+
+0.0.0.0
+
+Therefore:
+
+--server.address=0.0.0.0
+
+is important.
+
+Without this, the application may only be accessible from inside the container.
+
+
+---
+
+24. Generate Railway Public URL
+
+After deployment succeeds, configure public networking for the Railway service and generate a public domain.
+
+Railway provides a URL similar to:
+
+https://your-application.up.railway.app
+
+The final architecture is:
+
+User Browser
+     │
+     │ HTTPS
+     ▼
+Railway Public URL
+     │
+     ▼
+Railway Service
+     │
+     ▼
+Docker Container
+     │
+     ▼
+Streamlit Application
+
+
+---
+
+25. Testing the Railway Deployment
+
+Open the Railway public URL.
+
+Verify that:
+
+Application loads
+
+Then test the application's main functionality.
+
+Check the Railway logs if there is an error.
+
+Common issues include:
+
+Missing environment variable
+
+or:
+
+Application failed to start
+
+or:
+
+Port configuration error
+
+The Railway deployment logs should be checked to identify the exact issue.
+
+
+---
+
+26. Current Architecture
+
+At this stage, the architecture is:
+
+DEVELOPER
+                             │
+                             │ git push
+                             ▼
+                         GITHUB
+                             │
+                             ▼
+                     GITHUB ACTIONS
+                             │
+                ┌────────────┴────────────┐
+                │                         │
+                ▼                         ▼
+              CI                    Docker Build
+                │                         │
+                │                         ▼
+                │                        GHCR
+                │
+                │
+                ▼
+             SUCCESS
+                │
+                │
+                ▼
+            RAILWAY
+                │
+                ├── Environment Variables
+                │
+                ├── Docker Container
+                │
+                └── Public URL
+                │
+                ▼
+          LIVE APPLICATION
+
+
+---
+
+27. What Happens When Code Changes?
+
+Suppose a developer changes:
+
+app.py
+
+The developer runs:
+
+git add .
+git commit -m "Update application"
+git push
+
+The process becomes:
+
+Developer
+    │
+    │ git push
+    ▼
+GitHub
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Install dependencies
+    ├── Validate code
+    ├── Build Docker image
+    └── Push image to GHCR
+
+If Railway is connected directly to the GitHub repository:
+
+GitHub
+    │
+    ▼
+Railway detects new commit
+    │
+    ▼
+Railway builds new deployment
+    │
+    ▼
+New Docker Container
+    │
+    ▼
+Application Updated
+
+The developer does not need to manually log into a server or copy files.
+
+
+---
+
+28. Current CI/CD Architecture vs Recommended Final Architecture
+
+There is an important distinction.
+
+Current setup
+
+GitHub Actions builds and pushes an image:
+
+GitHub
+   │
+   ▼
+GitHub Actions
+   │
+   ▼
+GHCR
+
+At the same time, Railway can be connected directly to GitHub:
+
+GitHub
+   │
+   ▼
+Railway
+   │
+   ▼
+Railway builds its own Docker image
+
+This can result in Docker being built twice.
+
+
+---
+
+29. Recommended Production Architecture
+
+For a cleaner CI/CD pipeline, the final architecture should be:
+
+Developer
+    │
+    │ git push
+    ▼
+GitHub
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Run Tests
+    │
+    ├── Validate Code
+    │
+    ├── Build Docker Image
+    │
+    └── Push Image
+            │
+            ▼
+           GHCR
+            │
+            ▼
+         Railway
+            │
+            ▼
+   Deploy Same Docker Image
+            │
+            ▼
+       Live Application
+
+This separates responsibilities:
+
+Component	Responsibility
+
+GitHub	Source code management
+GitHub Actions	CI/CD automation
+Docker	Application packaging
+GHCR	Docker image storage
+Railway	Application hosting
+Railway Variables	Production secrets
+
+
+The ideal pipeline is:
+
+Code
+ │
+ ▼
+GitHub
+ │
+ ▼
+GitHub Actions
+ │
+ ├── Test
+ ├── Validate
+ └── Build
+      │
+      ▼
+    Docker
+      │
+      ▼
+     GHCR
+      │
+      ▼
+   Railway
+      │
+      ▼
+ Production
+
+
+---
+
+30. End-to-End Deployment Flow
+
+The complete process is:
+
+┌───────────────────────────────┐
+│       Developer writes code   │
+└───────────────┬───────────────┘
+                │
+                │ git push
+                ▼
+┌───────────────────────────────┐
+│            GitHub             │
+│       Source Repository       │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│       GitHub Actions          │
+│                               │
+│  1. Checkout code             │
+│  2. Setup Python              │
+│  3. Install dependencies      │
+│  4. Validate Python code      │
+│  5. Build Docker image        │
+│  6. Push image to GHCR        │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│             GHCR              │
+│      Docker Image Registry    │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│           Railway             │
+│                               │
+│  1. Deploy application        │
+│  2. Set environment variables │
+│  3. Start Docker container    │
+│  4. Expose public URL         │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│       Live Application        │
+│                               │
+│    https://your-app-url       │
+└───────────────────────────────┘
+
+
+---
+
+31. Summary
+
+The project has been containerized using Docker and integrated with GitHub Actions for automated CI.
+
+The current pipeline is:
+
+Code Change
+    ↓
+git push
+    ↓
+GitHub
+    ↓
+GitHub Actions
+    ↓
+Install Dependencies
+    ↓
+Validate Code
+    ↓
+Build Docker Image
+    ↓
+Push Docker Image to GHCR
+    ↓
+Railway Deployment
+    ↓
+Environment Variables
+    ↓
+Docker Container
+    ↓
+Public URL
+    ↓
+Live Application
+
+The main benefits of this setup are:
+
+Consistent application environment using Docker
+
+Automated code validation
+
+Automated Docker image creation
+
+Centralized Docker image storage using GHCR
+
+Cloud deployment using Railway
+
+Secure environment variable management
+
+Easy application updates through Git pushes
+
+No manual server management
+
+
+Final recommended architecture
+
+Developer
+                 │
+             git push
+                 │
+                 ▼
+              GitHub
+                 │
+                 ▼
+         GitHub Actions
+                 │
+          ┌──────┴──────┐
+          │             │
+          ▼             ▼
+       Testing     Docker Build
+                        │
+                        ▼
+                       GHCR
+                        │
+                        ▼
+                     Railway
+                        │
+                 ┌──────┴──────┐
+                 │             │
+                 ▼             ▼
+          Environment      Container
+           Variables          │
+                 │            ▼
+                 └──────► Application
+                              │
+                              ▼
+                         Public URL
+                              │
+                              ▼
+                            Users
