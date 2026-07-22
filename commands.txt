@@ -1,0 +1,12 @@
+docker build -t research-agent .
+
+docker run -p 8501:8501 \
+  -e TAVILY_API_KEY="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" \
+  -e GROQ_API_KEY="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" \
+  research-agent
+
+
+
+
+docker compose up --build
+docker compose down

@@ -1,0 +1,8 @@
+services:
+  research-agent:
+    build: .
+    container_name: research-agent
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
