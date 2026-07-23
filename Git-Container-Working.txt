@@ -1,0 +1,420 @@
+Research Agent — Containerization, CI/CD & Railway Deployment Documentation
+
+1. Overview
+
+This document explains how to containerize an existing Python application using Docker, create a CI pipeline using GitHub Actions, build and publish Docker images to GitHub Container Registry (GHCR), and deploy the application on Railway.
+
+The overall deployment architecture is:
+
+Developer
+    │
+    │ git push
+    ▼
+GitHub Repository
+    │
+    ▼
+GitHub Actions
+    │
+    ├── Install Dependencies
+    ├── Validate Python Code
+    ├── Build Docker Image
+    └── Push Docker Image
+            │
+            ▼
+          GHCR
+            │
+            ▼
+         Railway
+            │
+            ├── Environment Variables
+            ├── Docker Container
+            └── Public URL
+            │
+            ▼
+       Live Application
+
+The technologies used are:
+
+Git — Version control
+
+GitHub — Source code repository
+
+Docker — Application containerization
+
+GitHub Actions — CI/CD automation
+
+GitHub Container Registry (GHCR) — Docker image registry
+
+Railway — Cloud deployment and hosting
+
+
+
+---
+
+2. Project Structure
+
+The project contains the application code along with Docker and CI/CD configuration.
+
+A typical structure is:
+
+research-agent/
+│
+├── app.py
+├── agent.py
+├── search.py
+├── summarize.py
+│
+├── requirements.txt
+│
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
+│
+└── .github/
+    └── workflows/
+        └── ci.yml
+
+The application files themselves are outside the scope of this document.
+
+The important deployment-related files are:
+
+requirements.txt
+Dockerfile
+.dockerignore
+.gitignore
+.github/workflows/ci.yml
+
+
+---
+
+3. Prerequisites
+
+Before starting, install the following:
+
+Git
+
+Used for source code management.
+
+Verify installation:
+
+git --version
+
+Docker
+
+Used to build and run containers.
+
+Verify installation:
+
+docker --version
+
+GitHub Account
+
+Required for:
+
+Hosting source code
+
+Running GitHub Actions
+
+Publishing images to GHCR
+
+
+Railway Account
+
+Required for deploying the application.
+
+
+---
+
+4. Git Repository Setup
+
+Initialize Git inside the project:
+
+git init
+
+Add the remote GitHub repository:
+
+git remote add origin <YOUR_GITHUB_REPOSITORY_URL>
+
+Add all project files:
+
+git add .
+
+Create the first commit:
+
+git commit -m "Initial project setup"
+
+Push to GitHub:
+
+git branch -M main
+git push -u origin main
+
+The source code is now available in GitHub.
+
+
+---
+
+5. Environment Variables and Secrets
+
+The application uses API keys or other sensitive configuration.
+
+These values should never be hardcoded in source code.
+
+For local development, a .env file can be used:
+
+.env
+
+Example:
+
+TAVILY_API_KEY=your_api_key
+GROQ_API_KEY=your_api_key
+
+The .env file must not be pushed to GitHub.
+
+Add it to .gitignore:
+
+.env
+
+Other files that should normally be ignored:
+
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+This prevents secrets and local Python environments from being committed.
+
+
+---
+
+6. Docker Containerization
+
+6.1 What is Docker?
+
+Docker packages an application and its dependencies into a portable container.
+
+Without Docker, the application depends on the environment where it is executed:
+
+Operating System
+       +
+Python Version
+       +
+Installed Packages
+       +
+Application Code
+
+With Docker, the environment is packaged consistently:
+
+Docker Image
+│
+├── Base Python Image
+├── Python Dependencies
+└── Application Code
+
+The Docker image can then be executed as a container:
+
+Docker Image
+      │
+      ▼
+Docker Container
+      │
+      ▼
+Running Application
+
+
+---
+
+7. Creating the Dockerfile
+
+Create a file named:
+
+Dockerfile
+
+A suitable Dockerfile for a Streamlit-based Python application is:
+
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8501
+
+CMD ["sh", "-c", "streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+
+
+---
+
+8. Understanding the Dockerfile
+
+Base Image
+
+FROM python:3.12-slim
+
+This uses a lightweight Python 3.12 image.
+
+
+---
+
+Working Directory
+
+WORKDIR /app
+
+All application commands will execute inside:
+
+/app
+
+
+---
+
+Copy Requirements
+
+COPY requirements.txt .
+
+The dependency file is copied into the container.
+
+
+---
+
+Install Dependencies
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+Docker installs all Python dependencies required by the application.
+
+
+---
+
+Copy Application Code
+
+COPY . .
+
+The application source code is copied into the container.
+
+
+---
+
+Expose Port
+
+EXPOSE 8501
+
+Streamlit commonly runs on port 8501.
+
+
+---
+
+Start Application
+
+CMD ["sh", "-c", "streamlit run app.py --server.address=0.0.0.0 --server.port=${PORT:-8501}"]
+
+The application listens on:
+
+0.0.0.0
+
+This is important because the application needs to be accessible from outside the container.
+
+The port logic is:
+
+If PORT is provided:
+    Use PORT
+
+Otherwise:
+    Use 8501
+
+This makes the container suitable for both local Docker usage and Railway deployment.
+
+
+---
+
+9. Creating .dockerignore
+
+Create:
+
+.dockerignore
+
+Recommended contents:
+
+.env
+.git
+.gitignore
+.github
+__pycache__
+*.pyc
+.venv
+venv
+
+The purpose is to prevent unnecessary or sensitive files from being copied into the Docker build context.
+
+In particular:
+
+.env
+
+should never be included in the Docker image.
+
+
+---
+
+10. Build Docker Image Locally
+
+From the project root:
+
+docker build -t research-agent .
+
+Explanation:
+
+docker build
+
+Builds a Docker image.
+
+-t research-agent
+
+Gives the image a name.
+
+.
+
+Uses the current directory as the Docker build context.
+
+After building, check images:
+
+docker images
+
+You should see:
+
+research-agent
+
+
+---
+
+11. Run Docker Container Locally
+
+Run:
+
+docker run --env-file .env -p 8501:8501 research-agent
+
+The mapping is:
+
+Host Port 8501
+       │
+       ▼
+Container Port 8501
+
+Open:
+
+http://localhost:8501
+
+The architecture is:
+
+Browser
+   │
+   │ localhost:8501
+   ▼
+Docker Container
+   │
+   ▼
+Python Application
+
+This confirms that the application works inside Docker.
