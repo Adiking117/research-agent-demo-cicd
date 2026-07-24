@@ -4,7 +4,7 @@ from summarize import summarize_results
 
 st.set_page_config(page_title="Research Agent", page_icon="🔍", layout="centered")
 
-st.title("🔍 Research Agent")
+st.title("🔍 Adiking Agent")
 st.caption("Ask a question. It searches the web and gives you a cited answer.")
 st.divider()
 
